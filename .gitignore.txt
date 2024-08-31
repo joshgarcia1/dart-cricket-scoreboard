@@ -1,0 +1,20 @@
+# React Native
+node_modules/
+npm-debug.log
+yarn-error.log
+ios/build/
+android/app/build/
+*.keystore
+*.p12
+*.cert
+*.key
+
+# macOS
+.DS_Store
+
+# Logs
+logs
+*.log
+
+# Others
+.env
