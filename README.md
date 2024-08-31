@@ -8,6 +8,8 @@ An interactive dart cricket scoreboard mobile application.
 ## Features
 
 - Real-time score tracking
+- Interactive tappable scoreboard with undo and reset board actions
+- Winner popup screen showing the winning user's name and date of game allowing navigation back to main menu or game setup page
 - Manage multiple players
 - View game history and statistics
 - Able to Contact Support, Rate, and Share the app
