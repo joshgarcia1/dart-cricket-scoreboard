@@ -7,6 +7,7 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert 
  * This component allows users to set up a new game by entering a game name,
  * specifying player names, and adjusting the number of players. Once the setup
  * is complete, users can start the game, which navigates them to the GameScreenPage.
+ * Additionally, a user can navigate back to the main menu with the press of a button.
  */
 export default function GameSetupPage({ navigation }) {
   const [gameName, setGameName] = useState('New Game'); // State for storing the game name
@@ -93,6 +94,7 @@ export default function GameSetupPage({ navigation }) {
             />
             {players.length > 2 && (
               <TouchableOpacity
+                testID={`remove-player-${index}`}
                 style={styles.removeButton}
                 onPress={() => removePlayer(index)}
               >
@@ -111,6 +113,11 @@ export default function GameSetupPage({ navigation }) {
       {/* Button to start the game */}
       <TouchableOpacity style={styles.startButton} onPress={startGame}>
         <Text style={styles.startButtonText}>Start Game</Text>
+      </TouchableOpacity>
+
+      {/* Button to go back to main menu */}
+      <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('Home')}>
+        <Text style={styles.buttonText}>Back to Main Menu</Text>
       </TouchableOpacity>
     </ScrollView>
   );
@@ -189,12 +196,24 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 18,
   },
+  button: {
+    backgroundColor: '#8A2BE2', // Purple color for main menu button
+    padding: 15,
+    borderRadius: 5,
+    alignItems: 'center',
+    marginVertical: 20
+  },
+  buttonText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
 });
 
 /**
  * GameSetupPage.js Explanation:
  * 
- * 1. `GameSetupPage Component`: The main component that allows users to set up a new game by entering the game name and player names, adjusting the number of players, and starting the game.
+ * 1. `GameSetupPage Component`: The main component that allows users to set up a new game by entering the game name and player names, adjusting the number of players, starting the game, or navigate back to the main menu.
  * 2. `handlePlayerNameChange Function`: Updates the name of a player based on the index in the players array.
  * 3. `addPlayer Function`: Adds a new player to the setup, allowing a maximum of four players.
  * 4. `removePlayer Function`: Removes the last player from the setup, ensuring at least two players remain.
