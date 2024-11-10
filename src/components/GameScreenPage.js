@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Dimensions, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useFocusEffect } from '@react-navigation/native';
 
 /**
  * GameScreenPage Component
@@ -20,6 +19,7 @@ export default function GameScreenPage({ navigation, route }) {
   const [originalGrid, setOriginalGrid] = useState(route.params?.grid ? JSON.parse(JSON.stringify(route.params.grid)) : initialGridState);
   const [originalHistory, setOriginalHistory] = useState(route.params?.history ? [...route.params.history] : []);
   const [changesMade, setChangesMade] = useState(false); // Track if any changes have been made
+  const [isWinnerDeclared, setIsWinnerDeclared] = useState(false); // Track if a winner is declared
 
   /**
    * useEffect Hook
@@ -33,7 +33,14 @@ export default function GameScreenPage({ navigation, route }) {
       setOriginalGrid(JSON.parse(JSON.stringify(route.params.grid)));
       setOriginalHistory([...route.params.history]);
     }
-  }, [route.params?.grid, route.params?.history]);
+
+     // Cleanup function to save the game when the component unmounts
+    return () => {
+      if (!isWinnerDeclared) {
+        saveGame(); // Save the game when the component unmounts
+      }
+    };
+  }, [route.params?.grid, route.params?.history, isWinnerDeclared]);
 
   /**
    * saveGame Function
@@ -42,14 +49,16 @@ export default function GameScreenPage({ navigation, route }) {
    * an existing in-progress game or adding a new entry if necessary.
    */
   const saveGame = async () => {
-    const currentTime = new Date().toLocaleTimeString();
+    // Only save if the game is in-progress
+    if (isWinnerDeclared || !changesMade) return;
+
     const gameHistory = {
       gameName,
       players,
       grid,
       history,
       date: new Date().toLocaleDateString(),
-      time: currentTime,
+      time: new Date().toLocaleTimeString(),
     };
 
     try {
@@ -57,16 +66,13 @@ export default function GameScreenPage({ navigation, route }) {
       let inProgressGames = existingGames ? JSON.parse(existingGames) : [];
       
       // Find and remove the old game entry
-      inProgressGames = inProgressGames.filter(
-        (game) => JSON.stringify(game.grid) !== JSON.stringify(originalGrid)
-      );
+      inProgressGames = inProgressGames.filter(game => JSON.stringify(game.grid) !== JSON.stringify(originalGrid));
       
       // Add the updated game
       inProgressGames.push(gameHistory);
 
       await AsyncStorage.setItem('inProgressGames', JSON.stringify(inProgressGames));
       setOriginalGrid(JSON.parse(JSON.stringify(grid)));
-      setOriginalHistory([...history]);
       setChangesMade(false); // Reset change tracking
     } catch (error) {
       console.error('Failed to save game:', error);
@@ -86,28 +92,6 @@ export default function GameScreenPage({ navigation, route }) {
   };
 
   /**
-   * useFocusEffect Hook
-   * 
-   * This hook ensures that the game is saved when the user navigates away from the screen.
-   * It triggers the saveGameIfChanged function if any changes have been made.
-   */
-  useFocusEffect(
-    React.useCallback(() => {
-      const onBeforeRemove = async (e) => {
-        e.preventDefault();
-        await saveGameIfChanged();
-        navigation.dispatch(e.data.action);
-      };
-
-      navigation.addListener('beforeRemove', onBeforeRemove);
-
-      return () => {
-        navigation.removeListener('beforeRemove', onBeforeRemove);
-      };
-    }, [grid, history])
-  );
-
-  /**
    * handleCellPress Function
    * 
    * This function handles the press event on a cell in the game grid.
@@ -115,6 +99,8 @@ export default function GameScreenPage({ navigation, route }) {
    * and checks if a player has won the game.
    */
   const handleCellPress = (rowIndex, colIndex) => {
+    if (isWinnerDeclared) return;
+
     setGrid((prevGrid) => {
       const newGrid = [...prevGrid];
       const previousTaps = newGrid[rowIndex][colIndex].taps;
@@ -129,6 +115,7 @@ export default function GameScreenPage({ navigation, route }) {
       setChangesMade(true); // Mark that changes have been made
 
       checkForWinner(newGrid, colIndex); // Check if this move made someone a winner
+      saveGame(); // Save game after updating the cell
 
       return newGrid;
     });
@@ -141,18 +128,18 @@ export default function GameScreenPage({ navigation, route }) {
    * It updates the grid state to reflect the previous state.
    */
   const handleUndo = () => {
-    if (history.length > 0) {
-      const lastMove = history.pop();
-      setGrid((prevGrid) => {
-        const newGrid = [...prevGrid];
-        newGrid[lastMove.rowIndex][lastMove.colIndex] = {
-          taps: lastMove.previousTaps,
-        };
-        return newGrid;
-      });
-      setHistory([...history]);
-      setChangesMade(true); // Mark that changes have been made
-    }
+    if (history.length === 0 || isWinnerDeclared) return;
+    const lastMove = history.pop();
+    setGrid((prevGrid) => {
+      const newGrid = [...prevGrid];
+      newGrid[lastMove.rowIndex][lastMove.colIndex] = {
+        taps: lastMove.previousTaps
+      };
+      return newGrid;
+    });
+    setHistory([...history]);
+    setChangesMade(true); // Mark that changes have been made
+    saveGame(); // Save game after undo
   };
   
   /**
@@ -160,6 +147,8 @@ export default function GameScreenPage({ navigation, route }) {
    * 
    * This function resets the game board to its initial state, clearing all marks.
    * It asks the user for confirmation before proceeding with the reset.
+   * After resetting the board, it immediately saves the new game state to ensure 
+   * that the reset state is reflected when navigating away or resuming the game.
    */
   const handleResetBoard = () => {
     Alert.alert(
@@ -172,14 +161,55 @@ export default function GameScreenPage({ navigation, route }) {
         },
         {
           text: 'Yes',
-          onPress: () => {
+          onPress: async () => {
             setGrid(initialGridState); // Reset the grid
             setHistory([]); // Clear the history
             setChangesMade(true); // Mark changes as made
+            await saveResetGame(); // Immediately save the new reset state
           },
         },
       ]
     );
+  };
+
+  /**
+ * saveResetGame Function
+ * 
+ * This function saves the game state after the board has been reset. It clears
+ * the grid and history, then updates AsyncStorage with the reset state. This ensures 
+ * that when the game is resumed from the Game History page, the reset board state is loaded.
+ */
+  const saveResetGame = async () => {
+    const currentTime = new Date().toLocaleTimeString();
+    const resetGameHistory = { // Create a new game history object that reflects the reset state
+      gameName,
+      players,
+      grid: initialGridState, // Save the reset grid state
+      history: [],            // Clear the history as part of the reset
+      date: new Date().toLocaleDateString(),
+      time: currentTime,
+    }
+
+    try {
+      const existingGames = await AsyncStorage.getItem('inProgressGames');
+      let inProgressGames = existingGames ? JSON.parse(existingGames) : [];
+
+      // Remove the old game entry by matching the original grid state
+      inProgressGames = inProgressGames.filter(
+        (game) => JSON.stringify(game.grid) !== JSON.stringify(originalGrid)
+      );
+
+      // Add the reset game to AsyncStorage
+      inProgressGames.push(resetGameHistory);
+      await AsyncStorage.setItem('inProgressGames', JSON.stringify(inProgressGames));
+
+      // Update the original grid and history
+      setOriginalGrid(JSON.parse(JSON.stringify(initialGridState)));
+      setOriginalHistory([]);
+      setChangesMade(false); // No further changes after reset
+    } catch (error) {
+      console.error('Failed to save reset game:', error);
+    }
   };
 
   /**
@@ -207,6 +237,33 @@ export default function GameScreenPage({ navigation, route }) {
   };
 
   /**
+   * resetGame Function
+   * 
+   * This function helps the handleNewGameFromWinner function to ensure the board is reset
+   * when a user starts a new game from the Winner Popup Page.
+   */
+  const resetGame = () => {
+    setGrid(initialGridState); // Reset the grid to the initial state
+    setHistory([]); // Clear the history
+    setIsWinnerDeclared(false); // Reset winner status
+  };
+
+  /**
+   * handleNewGameFromWinner Function
+   * 
+   * Resets the game and clears the navigation stack to start fresh from the GameSetup screen.
+   */
+  const handleNewGameFromWinner = () => {
+    resetGame(); // Reset the game state
+    navigation.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [{ name: 'GameSetup' }],
+      })
+    );
+  };
+
+  /**
    * checkForWinner Function
    * 
    * This function checks if a player has filled an entire column with "Ⓧ" symbols,
@@ -218,12 +275,37 @@ export default function GameScreenPage({ navigation, route }) {
     const isWinner = column.every(cell => cell.taps === 3);
 
     if (isWinner) {
-      let winnerName = players[colIndex];
+      const winnerName = players[colIndex];
+      setIsWinnerDeclared(true); // Mark the game as completed
       saveCompletedGame(winnerName);  // Save the game as completed
-      navigation.navigate('WinnerPopup', {
-        playerName: winnerName,
-        date: new Date().toLocaleDateString(),
-      });
+      removeFromInProgress();
+      // Delay navigation to avoid updating state during render
+      setTimeout(() => {
+        navigation.navigate('WinnerPopup', {
+          playerName: winnerName,
+          date: new Date().toLocaleDateString(),
+        });
+      }, 100);
+    }
+  };
+
+  /**
+   * removeFromInProgress Function
+   * 
+   * This function removes the current game from the in-progress games stored in AsyncStorage.
+   * It ensures that the game is removed from the in-progress list if the game is completed.
+   */
+  const removeFromInProgress = async () => {
+    try {
+      const existingGames = await AsyncStorage.getItem('inProgressGames');
+      let inProgressGames = existingGames ? JSON.parse(existingGames) : [];
+
+      // Filter out the current game from "In-Progress" by comparing the grid or unique identifier
+      inProgressGames = inProgressGames.filter(game => JSON.stringify(game.grid) !== JSON.stringify(originalGrid));
+
+      await AsyncStorage.setItem('inProgressGames', JSON.stringify(inProgressGames));
+    } catch (error) {
+      console.error('Failed to remove game from in-progress:', error);
     }
   };
 
@@ -233,14 +315,13 @@ export default function GameScreenPage({ navigation, route }) {
    * This function saves the completed game to the list of completed games in AsyncStorage.
    */
   const saveCompletedGame = async (winnerName) => {
-    const currentTime = new Date().toLocaleTimeString();
     const completedGame = {
       gameName,
       players,
       grid,
       winner: winnerName,
       date: new Date().toLocaleDateString(),
-      time: currentTime,
+      time: new Date().toLocaleTimeString(),
     };
 
     try {
@@ -248,6 +329,8 @@ export default function GameScreenPage({ navigation, route }) {
       const completedGames = existingGames ? JSON.parse(existingGames) : [];
       completedGames.push(completedGame);
       await AsyncStorage.setItem('completedGames', JSON.stringify(completedGames));
+      // After saving to "Completed", remove it from "In-Progress"
+      await removeFromInProgress();
     } catch (error) {
       console.error('Failed to save completed game:', error);
     }
@@ -310,6 +393,7 @@ export default function GameScreenPage({ navigation, route }) {
                 )}
                 {/* Render each cell in the grid, handling taps and displaying the appropriate symbol */}
                 <TouchableOpacity
+                  testID={`cell-${rowIndex}-${colIndex}`}
                   style={styles.cell}
                   key={`cell-${rowIndex}-${colIndex}`}
                   onPress={() => handleCellPress(rowIndex, colIndex)}
@@ -423,14 +507,17 @@ const styles = StyleSheet.create({
  * 2. `useEffect Hook`: Updates the original grid and history states when the component receives new data via route parameters, ensuring proper state initialization.
  * 3. `saveGame Function`: Saves the current game state to AsyncStorage, ensuring that the game can be resumed later.
  * 4. `saveGameIfChanged Function`: Checks if changes have been made to the game state and triggers the saveGame function if any are detected.
- * 5. `useFocusEffect Hook`: Ensures the game state is saved whenever the user navigates away from the game screen, preventing data loss.
- * 6. `handleCellPress Function`: Handles user interactions with the game grid, updating the grid state and checking for a winner.
- * 7. `handleUndo Function`: Allows the user to undo the last move made in the game and updates the grid state to reflect the previous state.
- * 8. `handleResetBoard Function`: Resets the game board to its initial state, clears all marks, and alerts the user for confirmation before resetting.
+ * 5. `handleCellPress Function`: Handles user interactions with the game grid, updating the grid state and checking for a winner.
+ * 6. `handleUndo Function`: Allows the user to undo the last move made in the game and updates the grid state to reflect the previous state.
+ * 7. `handleResetBoard Function`: Resets the game board to its initial state, clears all marks, immediately saves the new state, and alerts the user for confirmation before resetting.
+ * 8. `saveResetGame Function`: This function saves the reset game state to AsyncStorage, ensuring the reset state is preserved and correctly loaded when the game is resumed.
  * 9. `renderCellContent Function`: Returns the appropriate symbol to display in a grid cell based on the number of taps.
  * 10. `getCellFontSize Function`: Returns the appropriate font size for each symbol and displays a larger font for the X with a circle.
  * 11. `checkForWinner Function`: Checks if a player has won by filling a column with "Ⓧ" symbols. If a player wins, the game is saved as completed, and the user is navigated to the WinnerPopupPage.
- * 12. `saveCompletedGame Function`: Saves the completed game to the list of completed games in AsyncStorage.
- * 13. `getNumberColumnPosition Function`: Determines the position of the number and bull column based on the number of players and ensures the blank tile is in the appropriate position between the player names.
- * 14. `styles Object`: Contains all the styling for the component, ensuring the layout is visually appealing and consistent with the rest of the app.
+ * 12. `resetGame Function`: Resets the game grid, history, and winner status to the initial state.
+ * 13. `handleNewGameFromWinner Function`: Resets the game and clears the navigation stack to start a new game from the GameSetup screen.
+ * 14. `removeFromInProgress Function`: Removes the current game from in-progress games in AsyncStorage upon completion, ensuring that completed games are not duplicated in-progress.
+ * 15. `saveCompletedGame Function`: Saves the completed game to the list of completed games in AsyncStorage.
+ * 16. `getNumberColumnPosition Function`: Determines the position of the number and bull column based on the number of players and ensures the blank tile is in the appropriate position between the player names.
+ * 17. `styles Object`: Contains all the styling for the component, ensuring the layout is visually appealing and consistent with the rest of the app.
  */
