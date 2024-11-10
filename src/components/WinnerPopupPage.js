@@ -1,4 +1,6 @@
+import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
+import { CommonActions } from '@react-navigation/native';
 
 /**
  * WinnerPopupPage Component
@@ -9,6 +11,16 @@ import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
  */
 export default function WinnerPopupPage({ navigation, route }) {
   const { playerName, date } = route.params; // Extract parameters passed to the component
+
+  // Function to handle starting a new game with a reset navigation stack
+  const handleNewGame = () => {
+    navigation.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [{ name: 'GameSetup' }],
+      })
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -38,7 +50,7 @@ export default function WinnerPopupPage({ navigation, route }) {
         {/* Button to start a new game */}
         <TouchableOpacity
           style={styles.button}
-          onPress={() => navigation.navigate('GameSetup')}
+          onPress={handleNewGame}
         >
           <Text style={styles.buttonText}>New Game</Text>
         </TouchableOpacity>
@@ -110,8 +122,8 @@ const styles = StyleSheet.create({
 /**
  * WinnerPopupPage.js Explanation:
  * 
- * 1. `WinnerPopupPage Component`: This is the main component that renders the winner's popup screen. It displays the winner's details (name, game name, time, and date) and provides options to navigate back to the main menu or start a new game.
- * 2. `route.params`: The component extracts parameters such as `gameName`, `playerName`, `date`, and `time` from the route to dynamically display the relevant information.
+ * 1. `WinnerPopupPage Component`: This is the main component that renders the winner's popup screen. It displays the winner's details (name and date) and provides options to navigate back to the main menu or start a new game.
+ * 2. `route.params`: The component extracts parameters such as `playerName` and `date`from the route to dynamically display the relevant information.
  * 3. `Image Component`: Displays an image (e.g., trophy) symbolizing the win.
  * 4. `Text Components`: Render the "WINNER" text with a dynamic and visually stunning style, along with the game details.
  * 5. `TouchableOpacity Components`: Provide interactive buttons for the user to either go back to the main menu or start a new game.
