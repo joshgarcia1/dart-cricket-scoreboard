@@ -1,5 +1,4 @@
-import { View, Text, TouchableOpacity, StyleSheet, Linking, Alert, Share } from 'react-native';
-import * as StoreReview from 'expo-store-review';
+import { View, Text, TouchableOpacity, StyleSheet, Linking, Alert, Share, Platform } from 'react-native';
 
 /**
  * AboutPage Component
@@ -32,11 +31,15 @@ export default function AboutPage() {
    * Opens the app rating dialog when the user presses the "Rate" button.
    * It uses the `StoreReview` API from Expo to prompt the user to rate the app.
    */
-  const handleRateApp = async () => {
-    if (await StoreReview.isAvailableAsync()) {
-      StoreReview.requestReview();
+  const handleRateApp = () => {
+    const expoGoAppStoreUrl = 'https://apps.apple.com/us/app/expo-go/id982107779';
+
+    if (Platform.OS === 'ios') {
+      Linking.openURL(expoGoAppStoreUrl).catch(() => {
+        Alert.alert('Error', 'Unable to open the App Store.');
+      });
     } else {
-      Alert.alert('Error', 'Rating is not available on this device.');
+      Alert.alert('Not Supported', 'Rating is only available on iOS devices.');
     }
   };
 
