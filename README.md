@@ -1,4 +1,4 @@
-# dart-cricket-scoreboard-mobile-application
+# dart-cricket-scoreboard
 An interactive dart cricket scoreboard mobile application.
 
 # Dart Cricket Scoreboard
